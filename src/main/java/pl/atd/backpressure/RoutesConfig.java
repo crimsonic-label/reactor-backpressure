@@ -12,6 +12,8 @@ public class RoutesConfig {
 
     @Bean
     public RouterFunction<?> routerFunction(ConsumerService consumer) {
-        return route(GET("/scenario1"), consumer::handleMessageScenario1);
+        return route(GET("/scenario1"), consumer::handleMessageScenario1)
+                .and(route(GET("/scenario2"), consumer::handleMessageScenario2))
+                .and(route(GET("/scenario2"), consumer::handleMessageScenario3));
     }
 }

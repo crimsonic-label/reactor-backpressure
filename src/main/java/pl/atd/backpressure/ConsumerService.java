@@ -23,14 +23,28 @@ public class ConsumerService {
     @Autowired
     private Producer producer;
 
+    /**
+     * Slow Consumer without Threading
+     * @param request reactive web request
+     * @return mono with accepted status
+     */
     public Mono<ServerResponse> handleMessageScenario1(ServerRequest request) {
         long count = Long.parseLong(request.queryParam("count").orElse("100"));
         int producerRate = Integer.parseInt(request.queryParam("producerRate").orElse("5"));
-        int consumerRate = Integer.parseInt(request.queryParam("consumerRate").orElse("5"));
+        int consumerRate = Integer.parseInt(request.queryParam("consumerRate").orElse("1"));
         long delayBetweenConsumes = 1000L / consumerRate;
 
+        // producer and the consumer chained together
         producer.produce(producerRate, count).subscribe(consumer(delayBetweenConsumes));
 
+        return ServerResponse.accepted().build();
+    }
+
+    public Mono<ServerResponse> handleMessageScenario2(ServerRequest request) {
+        return ServerResponse.accepted().build();
+    }
+
+    public Mono<ServerResponse> handleMessageScenario3(ServerRequest request) {
         return ServerResponse.accepted().build();
     }
 

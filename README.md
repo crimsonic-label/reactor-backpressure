@@ -7,7 +7,7 @@ http://www.java-allandsundry.com/2020/07/backpressure-in-project-reactor.html
 First create the image for the app using(This uses the [Jib gradle plugin](https://github.com/GoogleContainerTools/jib)): 
 
 ```bash
-./gradlew jibDockerBuild
+mvn jibDockerBuild
 ```
 
 and then
@@ -16,7 +16,7 @@ and then
 docker-compose up
 ```
 
-Graphana at http://<dockerip>:3000
+Graphana at http://<dockerip>:3000 (with login: admin)
 
 
 ## Trigger a Producer and Consumer

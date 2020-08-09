@@ -13,17 +13,14 @@ import reactor.core.scheduler.Scheduler;
 import reactor.core.scheduler.Schedulers;
 import reactor.util.concurrent.Queues;
 
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 
 @Service
 public class ConsumerService {
     private static final Logger LOGGER = LoggerFactory.getLogger(ConsumerService.class);
-    private ExecutorService executorService = Executors.newFixedThreadPool(5);
     private Scheduler publishOnScheduler = Schedulers.newBoundedElastic(5, 10, "publish");
     private Scheduler subscribeOnScheduler = Schedulers.newBoundedElastic(5, 10, "subscribe");
-    private Scheduler flatMapScheduler = Schedulers.newBoundedElastic(5, 10, "flatMap");
 
     private Counter consumerCounter = Metrics.counter("consumer");
 
@@ -40,7 +37,9 @@ public class ConsumerService {
         long delayBetweenConsumes = 1000L / consumerRate;
 
         // producer and the consumer chained together
-        producer.produce(producerRate, count).subscribe(consumer(delayBetweenConsumes));
+        producer.produce(producerRate, count)
+                //.subscribeOn(Schedulers.fromExecutor(executorService)) // does not change anything
+                .subscribe(consumer(delayBetweenConsumes));
 
         return ServerResponse.accepted().build();
     }
@@ -60,7 +59,7 @@ public class ConsumerService {
         producer.produce(producerRate, count)
                 // subscribe on changes the thread where producer produces
                 .subscribeOn(subscribeOnScheduler)
-                // publish on changes the thread where consumptions occurs
+
                 .publishOn(publishOnScheduler, prefetch)
                 .subscribe(consumer(delayBetweenConsumes));
 
@@ -79,20 +78,10 @@ public class ConsumerService {
         int concurrency = request.queryParam("concurrency").map(Integer::parseInt).orElse(5);
 
         producer.produce(producerRate, count)
-                // subscribe on changes the thread where producer produces
-                .subscribeOn(subscribeOnScheduler)
-                // publish on changes the thread where consumptions occurs
-                .publishOn(publishOnScheduler, prefetch)
-                .flatMap((value) -> Mono.fromSupplier(() -> {
-                    try {
-                        Thread.sleep(delayBetweenConsumes);
-                    } catch (InterruptedException e) {
-                        LOGGER.error("Sleep interrupted", e);
-                    }
-                    LOGGER.info("Consumed: {}", value);
-                    consumerCounter.increment();
-                    return null;
-                }), concurrency)
+                .subscribeOn(Schedulers.newParallel(concurrency, Executors.defaultThreadFactory()))
+                .parallel(concurrency)
+                .runOn(subscribeOnScheduler, prefetch)
+                .doOnNext(consumer(delayBetweenConsumes))
                 .subscribe();
 
         return ServerResponse.accepted().build();

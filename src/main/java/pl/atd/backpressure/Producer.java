@@ -24,8 +24,18 @@ public class Producer {
         // To supply an initial state
         Callable<Long> initialState = () -> 1L;
 
-        // BiFunction to consume the state, emit value, change state
-        BiFunction<Long, SynchronousSink<Long>, Long> generator = (state, sink) -> {
+        // Flux which accepts initial state and bifunction
+        return Flux.generate(initialState, generator(upto, delayBetweenEmits));
+    }
+
+    /**
+     * Generator BiFunction to consume the state, emit value, change state
+     * @param upto number of events
+     * @param delayBetweenEmits delay between events
+     * @return generator BiFunction
+     */
+    private BiFunction<Long, SynchronousSink<Long>, Long> generator(long upto, long delayBetweenEmits) {
+        return (state, sink) -> {
 
             try {
                 Thread.sleep(delayBetweenEmits);
@@ -44,8 +54,5 @@ public class Producer {
             }
             return nextState;
         };
-
-        // Flux which accepts initial state and bifunction
-        return Flux.generate(initialState, generator);
     }
 }

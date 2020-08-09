@@ -15,13 +15,14 @@ import reactor.util.concurrent.Queues;
 
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 @Service
 public class ConsumerService {
     private static final Logger LOGGER = LoggerFactory.getLogger(ConsumerService.class);
     private Scheduler publishOnScheduler = Schedulers.newBoundedElastic(5, 10, "publish");
     private Scheduler subscribeOnScheduler = Schedulers.newBoundedElastic(5, 10, "subscribe");
-
+    private Scheduler flatMapScheduler = Schedulers.newBoundedElastic(5, 10, "flatMap");
     private Counter consumerCounter = Metrics.counter("consumer");
 
     @Autowired
@@ -85,6 +86,39 @@ public class ConsumerService {
                 .subscribe();
 
         return ServerResponse.accepted().build();
+    }
+
+    public Mono<ServerResponse> handleMessageScenario4(ServerRequest request) {
+        long count = Long.parseLong(request.queryParam("count").orElse("100"));
+        int producerRate = Integer.parseInt(request.queryParam("producerRate").orElse("5"));
+        int consumerRate = Integer.parseInt(request.queryParam("consumerRate").orElse("1"));
+        long delayBetweenConsumes = 1000L / consumerRate;
+        int prefetch = request.queryParam("prefetch").map(Integer::parseInt).orElse(Queues.SMALL_BUFFER_SIZE);
+        int concurrency = request.queryParam("concurrency").map(Integer::parseInt).orElse(5);
+
+        producer.produce(producerRate, count)
+                // subscribe on changes the thread where producer produces
+                .subscribeOn(subscribeOnScheduler)
+                // publish on changes the thread where consumptions occurs
+                .publishOn(publishOnScheduler, prefetch)
+                .flatMap(value -> Mono.fromSupplier(supplier(delayBetweenConsumes, value))
+                        .subscribeOn(flatMapScheduler), concurrency)
+                .subscribe();
+
+        return ServerResponse.accepted().build();
+    }
+
+    private Supplier<Long> supplier(long delayBetweenConsumes, Long value) {
+        return () -> {
+            try {
+                Thread.sleep(delayBetweenConsumes);
+            } catch (InterruptedException e) {
+                LOGGER.error("Sleep interrupted", e);
+            }
+            LOGGER.info("Consumed: {}", value);
+            consumerCounter.increment();
+            return null;
+        };
     }
 
     private Consumer<Long> consumer(long delayBetweenConsumes) {
